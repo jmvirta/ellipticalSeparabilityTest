@@ -9,7 +9,7 @@ All code is in R.
 
 The code files are:
 
-- code_algorithm.R, implementations of the proposed test and the Gaussian likelihood ratio test for the same null hypothesis
+- code_test.R, implementations of the proposed test and the Gaussian likelihood ratio test for the same null hypothesis
 
 ## Authors
 
