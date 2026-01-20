@@ -18,7 +18,8 @@ gen_matrix_t <- function(n, p1, p2, nu){
 
 
 
-# Estimates the two constants (m4 + m2) and (3m4 - m2) required in Theorem 12 in the paper
+# Auxiliary function that estimates the two constants (m4 + m2)/betaF^2 and
+# (3m4 - m2)/betaF^2 required in Theorems 12, 13 in the paper
 estim_m_constants <- function(x){
   p1 <- dim(x)[1]
   p2 <- dim(x)[2]
@@ -55,14 +56,78 @@ estim_m_constants <- function(x){
 
 
 
+# Auxiliary function that computes the projection matrix parts of
+# the pseudo-inverse of \Omega^{1/2} B \Omega^{1/2}
+compute_pseudoinverse_parts <- function(p1, p2){
+  
+  K1 <- matrix(0, p1^2*p2^2, p1^2*p2^2)
+  for(i in 1:p1){
+    for(j in 1:p1){
+      Eij <- matrix(0, p1, p1)
+      Eij[i, j] <- 1
+      K1 <- K1 + diag(p2)%x%Eij%x%diag(p2)%x%t(Eij)
+    }
+  }
+  
+  K2 <- matrix(0, p1^2*p2^2, p1^2*p2^2)
+  for(i in 1:p2){
+    for(j in 1:p2){
+      Eij <- matrix(0, p2, p2)
+      Eij[i, j] <- 1
+      K2 <- K2 + Eij%x%diag(p1)%x%t(Eij)%x%diag(p1)
+    }
+  }
+  
+  V1 <- matrix(0, p1^2*p2^2, p1^2*p2^2)
+  for(i in 1:p1){
+    for(j in 1:p1){
+      Eij <- matrix(0, p1, p1)
+      Eij[i, j] <- 1
+      V1 <- V1 + diag(p2)%x%Eij%x%diag(p2)%x%Eij
+    }
+  }
+  
+  V2 <- matrix(0, p1^2*p2^2, p1^2*p2^2)
+  for(i in 1:p2){
+    for(j in 1:p2){
+      Eij <- matrix(0, p2, p2)
+      Eij[i, j] <- 1
+      V2 <- V2 + Eij%x%diag(p1)%x%Eij%x%diag(p1)
+    }
+  }
+  
+  G1 <- 0.25*(diag(p1^2*p2^2) + K1 + K2 + K1%*%K2)
+  G2 <- 0.25*(diag(p1^2*p2^2) - K1 - K2 + K1%*%K2)
+  
+  
+  p <- p1*p2
+  Q1 <- diag(p1^2) - (1/p1)*c(diag(p1))%*%t(c(diag(p1)))
+  R1 <- (1/p2)*Q1%*%(t(c(diag(p2)))%x%diag(p1^2))%*%(diag(p2)%x%commutation.matrix(p2, p1)%x%diag(p1))
+  
+  Q2 <- diag(p2^2) - (1/p2)*c(diag(p2))%*%t(c(diag(p2)))
+  R2 <- (1/p1)*Q2%*%(t(c(diag(p1)))%x%diag(p2^2))%*%(diag(p1)%x%commutation.matrix(p1, p2)%x%diag(p2))%*%(commutation.matrix(p1, p2)%x%commutation.matrix(p1, p2))
+  
+  Qp <- diag(p^2) - (1/p)*c(diag(p))%*%t(c(diag(p)))
+  
+  B0 <- ((diag(p2) %x% commutation.matrix(p1, p2) %x% diag(p1))%*%((R2 %x% c(diag(p1))) + (c(diag(p2)) %x% R1)) - Qp)
+  
+  return(list(E1 = B0%*%G1%*%t(B0), E2 = B0%*%G2%*%t(B0)))
+}
+
+
+
+
+
+
+
 # Performs the asymptotic test of covariance separability for elliptical data
-# and returns the p-value for
+# using the squared norm test statistic and returns the p-value for
 # H0 = Sigma is separable
 #
 # x        = the data as an array of size p1 x p2 x n
 # gaussian = whether the data is Gaussian,
 #           if TRUE, a simpler version of the limiting distribution is used
-ellip_sep_test <- function(x, gaussian = FALSE){
+ellip_norm_sep_test <- function(x, gaussian = FALSE){
   
   
   p1 <- dim(x)[1]
@@ -71,6 +136,10 @@ ellip_sep_test <- function(x, gaussian = FALSE){
   
   # Estimate the constants required in the limiting distribution
   t_const <- estim_m_constants(x)
+  
+  if(t_const[2] < 0){
+    t_const[2] <- 0
+  }
 
   # Full vec-covariance and its scaled version
   S <- cov(t(apply(x, 3, c)))
@@ -97,6 +166,68 @@ ellip_sep_test <- function(x, gaussian = FALSE){
   
   pval
 }
+
+
+
+
+
+
+
+# Performs the asymptotic test of covariance separability for elliptical data
+# using the Wald test statistic and returns the p-value for
+# H0 = Sigma is separable
+#
+# x        = the data as an array of size p1 x p2 x n
+# gaussian = whether the data is Gaussian,
+#           if TRUE, the fourth moments are not estimated
+ellip_wald_sep_test <- function(x, gaussian = FALSE){
+  
+  p1 <- dim(x)[1]
+  p2 <- dim(x)[2]
+  n <- dim(x)[3]
+  
+  # Estimate the constants required in the limiting distribution
+  if(!gaussian){
+    t_const <- estim_m_constants(x)
+    if(t_const[2] < 0){
+      t_const[2] <- 0
+    }
+  } else {
+    t_const <- c(2, 2)
+  }
+
+  # Pseudoinverse formation
+  orth_parts <- compute_pseudoinverse_parts(p1, p2)
+  if(t_const[2] > 1e-6){
+    pseudo_i <- (1/t_const[1])*orth_parts$E1 + (1/t_const[2])*orth_parts$E2
+  } else {
+    pseudo_i <- (1/t_const[1])*orth_parts$E1
+  }
+  
+  # Full vec-covariance and its scaled version
+  S <- cov(t(apply(x, 3, c)))
+  R <- S/(det(S)^(1/(p1*p2)))
+  
+  # Matrix normal MLE and its scaled versions
+  est_2 <- MLmatrixnorm(x, tol = 1e-8)
+  S1 <- est_2$U
+  S2 <- est_2$V*est_2$var
+  R1 <- S1/(det(S1)^(1/p1))
+  R2 <- S2/(det(S2)^(1/p2))
+  
+  # Test statistic computation
+  eig_R <- eigen(R)
+  R_invhalf <- eig_R$vectors%*%diag(eig_R$values^(-1/2))%*%t(eig_R$vectors)
+  V_diff_mat <- R_invhalf%*%(R2%x%R1)%*%R_invhalf - diag(p1*p2)
+
+  test_stat <- c(n*t(c(V_diff_mat))%*%pseudo_i%*%c(V_diff_mat))
+  
+  pval <- pchisq(test_stat, df = 0.25*(p1 + 2)*(p1 - 1)*(p2 + 2)*(p2 - 1) + 0.25*p1*(p1 - 1)*p2*(p2 - 1), lower.tail = FALSE)
+  
+  pval
+}
+
+
 
 
 
@@ -141,7 +272,8 @@ nu <- 5
 # LRT rejects too often
 
 x <- rmatrixt(n = n, df = nu, mean = matrix(0, p1, p2))*sqrt(nu - 2)
-ellip_sep_test(x)
+ellip_norm_sep_test(x)
+ellip_wald_sep_test(x)
 lrt_sep_test(x)
 
 
@@ -150,7 +282,8 @@ lrt_sep_test(x)
 
 x <- rmatrixt(n = n, df = nu, mean = matrix(0, p1, p2))*sqrt(nu - 2)
 x[1, 1, ] <- 1.2*x[1, 1, ]
-ellip_sep_test(x)
+ellip_norm_sep_test(x)
+ellip_wald_sep_test(x)
 lrt_sep_test(x)
 
 
@@ -158,7 +291,8 @@ lrt_sep_test(x)
 # Similar performance
 
 x <- rmatrixnorm(n, mean = matrix(0, p1, p2))
-ellip_sep_test(x)
+ellip_norm_sep_test(x)
+ellip_wald_sep_test(x)
 lrt_sep_test(x)
 
 
@@ -167,8 +301,6 @@ lrt_sep_test(x)
 
 x <- rmatrixnorm(n, mean = matrix(0, p1, p2))
 x[1, 1, ] <- 1.2*x[1, 1, ]
-ellip_sep_test(x)
+ellip_norm_sep_test(x)
+ellip_wald_sep_test(x)
 lrt_sep_test(x)
-
-
-
