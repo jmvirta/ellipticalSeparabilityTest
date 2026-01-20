@@ -1,5 +1,5 @@
 # ellipticalSeparabilityTest
-This repository contains R-code related to the manuscript "Asymptotic test of covariance separability for matrix elliptical data" by Virta and Matsuda (2025+).
+This repository contains R-code related to the manuscript "Asymptotic test of covariance separability for matrix elliptical data" by Virta and Matsuda (2026+).
 
 The manuscript proposes two new tests for the null hypothesis of separability, $H_0: \Sigma = \Sigma_2 \otimes \Sigma_1$, i.e., that the covariance matrix of the data can be expressed as a product of two smaller covariance matrices. The asymptotic null distributions of the test statistic are derived under the matrix elliptical family.
 
